@@ -41,21 +41,20 @@ jobs:
           if [ -d tests ]; then
             pytest tests --tb=short -v
           else
-            echo "Nenhum teste encontrado."
+            echo "Nenhum diretório 'tests' encontrado."
           fi
 
   deploy:
-    name: Deploy
+    name: Deploy para EC2
     needs: test
-    runs-on: ubuntu-latest
-
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Garantir permissões da pasta
+      - name: Garantir diretório da aplicação
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_API_HOST }}
@@ -65,22 +64,18 @@ jobs:
             sudo mkdir -p /opt/prevision-api
             sudo chown -R ubuntu:ubuntu /opt/prevision-api
 
-      - name: Copiar aplicação
+      - name: Copiar projeto completo
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_API_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
+          source: "."
+          target: "/opt/prevision-api"
           overwrite: true
           strip_components: 1
-          target: /opt/prevision-api
-          source: |
-            app.py
-            main.py
-            modelo.pkl
-            data/**
 
-      - name: Atualizar dependências e reiniciar
+      - name: Instalar dependências e reiniciar API
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_API_HOST }}
