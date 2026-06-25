@@ -2,81 +2,65 @@ name: CI/CD – prevision-api
 
 on:
   push:
-    branches:
-      - main
-
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
+  # -----------------------------------------------------------------
+  # 1. Testes e lint
+  # -----------------------------------------------------------------
   test:
-    name: Testes
+    name: Lint & Testes
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout do repositório
         uses: actions/checkout@v4
 
-      - name: Configurar Python
+      - name: Configurar Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Instalar dependências
         run: |
-          python -m pip install --upgrade pip
-
-          pip install \
-            fastapi \
-            "uvicorn[standard]" \
-            joblib \
-            pandas \
-            scikit-learn \
-            imbalanced-learn \
-            httpx \
-            pytest
+          pip install --upgrade pip
+          pip install fastapi "uvicorn[standard]" joblib pandas scikit-learn httpx pytest
 
       - name: Executar testes
         run: |
           if [ -d tests ]; then
-            pytest tests --tb=short -v
+            pytest tests/ --tb=short -v
           else
-            echo "Nenhum teste encontrado."
+            echo "Nenhum diretório 'tests' encontrado – pulando etapa de testes."
           fi
 
+  # -----------------------------------------------------------------
+  # 2. Deploy para EC2 (apenas em push para main)
+  # -----------------------------------------------------------------
   deploy:
-    name: Deploy
+    name: Deploy para EC2
     needs: test
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout
+      - name: Checkout do repositório
         uses: actions/checkout@v4
 
-      - name: Preparar diretório da aplicação
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_API_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            sudo mkdir -p /opt/prevision-api
-            sudo chown -R ubuntu:ubuntu /opt/prevision-api
-
-      - name: Copiar projeto
+      # Copia os arquivos da API para a instância EC2
+      - name: Copiar arquivos para a EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_API_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: |
-            *
+          source: "main.py,app.py,modelo.pkl,data/,service/"
           target: /opt/prevision-api
-          overwrite: true
 
-      - name: Atualizar ambiente
+      # Atualiza dependências e reinicia o serviço
+      - name: Reiniciar serviço na EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_API_HOST }}
@@ -84,25 +68,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -e
-
-            cd /opt/prevision-api
-
-            if [ ! -d ".venv" ]; then
-              python3 -m venv .venv
-            fi
-
-            source .venv/bin/activate
-
-            python -m pip install --upgrade pip
-
-            pip install \
-              fastapi \
-              "uvicorn[standard]" \
-              joblib \
-              pandas \
-              scikit-learn \
-              imbalanced-learn
-
+            source /opt/prevision-api/.venv/bin/activate
+            pip install fastapi "uvicorn[standard]" joblib pandas scikit-learn --quiet
             sudo systemctl restart prevision-api
-
             sudo systemctl status prevision-api --no-pager
