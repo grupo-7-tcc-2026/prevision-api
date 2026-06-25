@@ -3,13 +3,11 @@ name: CI/CD – prevision-api
 on:
   push:
     branches: [main]
+
   pull_request:
     branches: [main]
 
 jobs:
-  # -----------------------------------------------------------------
-  # 1. Testes e lint
-  # -----------------------------------------------------------------
   test:
     name: Lint & Testes
     runs-on: ubuntu-latest
@@ -25,8 +23,16 @@ jobs:
 
       - name: Instalar dependências
         run: |
-          pip install --upgrade pip
-          pip install fastapi "uvicorn[standard]" joblib pandas scikit-learn httpx pytest
+          python -m pip install --upgrade pip
+          pip install \
+            fastapi \
+            "uvicorn[standard]" \
+            joblib \
+            pandas \
+            scikit-learn \
+            imbalanced-learn \
+            httpx \
+            pytest
 
       - name: Executar testes
         run: |
@@ -36,9 +42,6 @@ jobs:
             echo "Nenhum diretório 'tests' encontrado – pulando etapa de testes."
           fi
 
-  # -----------------------------------------------------------------
-  # 2. Deploy para EC2 (apenas em push para main)
-  # -----------------------------------------------------------------
   deploy:
     name: Deploy para EC2
     needs: test
@@ -49,7 +52,6 @@ jobs:
       - name: Checkout do repositório
         uses: actions/checkout@v4
 
-      # Copia os arquivos da API para a instância EC2
       - name: Copiar arquivos para a EC2
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -59,8 +61,7 @@ jobs:
           source: "main.py,app.py,modelo.pkl,data/,service/"
           target: /opt/prevision-api
 
-      # Atualiza dependências e reinicia o serviço
-      - name: Reiniciar serviço na EC2
+      - name: Criar ambiente, instalar dependências e reiniciar
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_API_HOST }}
@@ -68,7 +69,26 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -e
-            source /opt/prevision-api/.venv/bin/activate
-            pip install fastapi "uvicorn[standard]" joblib pandas scikit-learn --quiet
+
+            cd /opt/prevision-api
+
+            # Cria a virtualenv caso não exista
+            if [ ! -d ".venv" ]; then
+              python3 -m venv .venv
+            fi
+
+            source .venv/bin/activate
+
+            python -m pip install --upgrade pip
+
+            pip install \
+              fastapi \
+              "uvicorn[standard]" \
+              joblib \
+              pandas \
+              scikit-learn \
+              imbalanced-learn
+
             sudo systemctl restart prevision-api
+
             sudo systemctl status prevision-api --no-pager
