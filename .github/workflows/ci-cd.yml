@@ -11,11 +11,11 @@ on:
 
 jobs:
   test:
-    name: Testes
+    name: Lint & Testes
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout do repositório
         uses: actions/checkout@v4
 
       - name: Configurar Python
@@ -26,12 +26,20 @@ jobs:
       - name: Instalar dependências
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install \
+            fastapi \
+            "uvicorn[standard]" \
+            joblib \
+            pandas \
+            scikit-learn \
+            imbalanced-learn \
+            httpx \
+            pytest
 
       - name: Executar testes
         run: |
           if [ -d tests ]; then
-            pytest tests/ --tb=short -v
+            pytest tests --tb=short -v
           else
             echo "Nenhum teste encontrado."
           fi
@@ -39,35 +47,31 @@ jobs:
   deploy:
     name: Deploy para EC2
     needs: test
-
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout do repositório
         uses: actions/checkout@v4
 
-      - name: Copiar aplicação
+      - name: Copiar arquivos para EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_API_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-
-          overwrite: true
-          rm: true
-
           source: "."
           target: "/opt/prevision-api"
+          overwrite: true
+          rm: true
+          strip_components: 1
 
-      - name: Atualizar ambiente
+      - name: Atualizar dependências e reiniciar API
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_API_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-
           script: |
             set -e
 
@@ -77,7 +81,13 @@ jobs:
 
             python -m pip install --upgrade pip
 
-            pip install -r requirements.txt
+            pip install \
+              fastapi \
+              "uvicorn[standard]" \
+              joblib \
+              pandas \
+              scikit-learn \
+              imbalanced-learn
 
             sudo systemctl restart prevision-api
 
