@@ -11,11 +11,11 @@ on:
 
 jobs:
   test:
-    name: Lint & Testes
+    name: Testes
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout do repositório
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Configurar Python
@@ -45,28 +45,42 @@ jobs:
           fi
 
   deploy:
-    name: Deploy para EC2
+    name: Deploy
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
     steps:
-      - name: Checkout do repositório
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Copiar arquivos para EC2
+      - name: Garantir permissões da pasta
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_API_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            sudo mkdir -p /opt/prevision-api
+            sudo chown -R ubuntu:ubuntu /opt/prevision-api
+
+      - name: Copiar aplicação
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_API_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "."
-          target: "/opt/prevision-api"
           overwrite: true
-          rm: true
           strip_components: 1
+          target: /opt/prevision-api
+          source: |
+            app.py
+            main.py
+            modelo.pkl
+            data/**
 
-      - name: Atualizar dependências e reiniciar API
+      - name: Atualizar dependências e reiniciar
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_API_HOST }}
