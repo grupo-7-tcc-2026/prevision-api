@@ -2,10 +2,19 @@ from fastapi import FastAPI
 import joblib
 import pandas as pd
 import sys
+from datetime import date, timedelta, datetime
+from service.meteo_service import MeteoService
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
-app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:4200"], # Ou ["*"] para liberar geral
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 try:
     modelo = joblib.load('modelo.pkl')
     print("Modelo carregado com sucesso!")
@@ -17,6 +26,56 @@ except Exception as e:
 def get_distritos():
     df = pd.read_csv("data/trusted_district.csv", delimiter="|")
     return df.to_dict(orient="records")
+
+@app.get("/prever-distrito/{distrito}")
+def prever_distrito(distrito: str):
+    df = pd.read_csv("data/trusted_district.csv", delimiter="|")
+    df_drenagem = pd.read_csv(
+        "data/trusted_drainage.csv", delimiter=";")
+    linha = df[df['nome'] == distrito].iloc[0]
+    lat = linha['lat']
+    long = linha['long']
+    data_atual = date.today()
+    response = MeteoService(lat,long, data_atual, data_atual).get()
+    clima_atual = MeteoService(lat,long, data_atual, data_atual).get_current()
+    df_final = pd.DataFrame()
+    df_resp = pd.DataFrame(response)
+    df_resp['date'] = pd.to_datetime(df_resp['date'])
+    df_final['mes'] = df_resp['date'].dt.month
+    df_final['hora'] = df_resp['date'].dt.hour
+    df_final['mm_chuva'] = df_resp['precipitation']
+    df_final['lat'] = lat
+    df_final['long'] = long
+    qt_trechos = (
+        df_drenagem.loc[
+            df_drenagem['nome_distrito'] == distrito,
+            'qt_trechos_drenagem'
+        ].iloc[0]
+    )
+    df_final['qt_trechos_drenagem'] = qt_trechos
+    colunas_modelo = [
+        'qt_trechos_drenagem',
+        'mm_chuva',
+        'mes',
+        'hora'
+    ]
+    df_final = df_final[colunas_modelo]
+    probs = modelo.predict_proba(df_final)[:, 1]
+
+    df_final['prob_alagamento'] = probs
+    risco_dia = 0.7 * probs.max() + 0.3 * probs.mean()
+    horarios = df_final[['hora', 'prob_alagamento']].to_dict(orient='records')
+
+    return {
+    "data": data_atual,
+    "data_hora_captura": datetime.now(),
+    "clima_atual": clima_atual,
+    "probabilidade_dia": float(risco_dia),
+    "nivel_risco": "Sem risco de Alagamento" if risco_dia < 0.49 else ("Baixo" if risco_dia < 0.5 else ("Médio" if risco_dia < 0.7 else "Alto")),
+    "horarios": horarios
+    # "horarios": df_final['hora'],
+    # "probs": df_final['prob_alagamento']
+}
 
 @app.post("/prever")
 def prever_risco(dados: dict):
