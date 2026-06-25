@@ -41,20 +41,20 @@ jobs:
           if [ -d tests ]; then
             pytest tests --tb=short -v
           else
-            echo "Nenhum diretório 'tests' encontrado."
+            echo "Nenhum teste encontrado."
           fi
 
   deploy:
-    name: Deploy para EC2
+    name: Deploy
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Garantir diretório da aplicação
+      - name: Preparar diretório da aplicação
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_API_HOST }}
@@ -64,7 +64,7 @@ jobs:
             sudo mkdir -p /opt/prevision-api
             sudo chown -R ubuntu:ubuntu /opt/prevision-api
 
-      - name: Copiar projeto completo
+      - name: Copiar projeto
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_API_HOST }}
@@ -73,9 +73,8 @@ jobs:
           source: "."
           target: "/opt/prevision-api"
           overwrite: true
-          strip_components: 1
 
-      - name: Instalar dependências e reiniciar API
+      - name: Atualizar ambiente
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_API_HOST }}
@@ -85,6 +84,10 @@ jobs:
             set -e
 
             cd /opt/prevision-api
+
+            if [ ! -d ".venv" ]; then
+              python3 -m venv .venv
+            fi
 
             source .venv/bin/activate
 
