@@ -58,7 +58,7 @@ jobs:
           host: ${{ secrets.EC2_API_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "main.py,app.py,modelo.pkl,data/,service/"
+          source: "main.py,app.py,modelo.pkl,data/,service/,repository/"
           target: /opt/prevision-api
 
       - name: Criar ambiente, instalar dependências e reiniciar
