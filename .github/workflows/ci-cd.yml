@@ -31,6 +31,8 @@ jobs:
             pandas \
             scikit-learn \
             imbalanced-learn \
+            openmeteo-requests \
+            requests-cache \
             httpx \
             pytest
 
