@@ -37,7 +37,7 @@ jobs:
           else
             echo "requirements.txt nao encontrado. Gerando requirements.ci.txt com pipreqs."
             pip install pipreqs
-            pipreqs . --force --encoding=latin-1 --ignore .venv,data --savepath requirements.ci.txt || true
+            pipreqs . --force --no-pin --encoding=latin-1 --ignore .venv,data --savepath requirements.ci.txt || true
 
             if [ -f requirements.ci.txt ]; then
               REQ_FILE="requirements.ci.txt"
@@ -124,7 +124,7 @@ jobs:
             else
               echo "requirements.txt nao encontrado. Gerando requirements.ci.txt com pipreqs."
               pip install pipreqs
-              pipreqs /opt/prevision-api --force --encoding=latin-1 --ignore .venv,data --savepath /opt/prevision-api/requirements.ci.txt || true
+              pipreqs /opt/prevision-api --force --no-pin --encoding=latin-1 --ignore .venv,data --savepath /opt/prevision-api/requirements.ci.txt || true
 
               if [ -f /opt/prevision-api/requirements.ci.txt ]; then
                 pip install -r /opt/prevision-api/requirements.ci.txt
