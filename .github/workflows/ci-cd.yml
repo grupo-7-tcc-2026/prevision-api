@@ -76,6 +76,9 @@ jobs:
 
             cd /opt/prevision-api
 
+            # Garante permissao de escrita para o usuario ubuntu no diretorio da app
+            sudo chown -R ubuntu:ubuntu /opt/prevision-api
+            
             # Cria a virtualenv caso não exista
             if [ ! -d ".venv" ]; then
               python3 -m venv .venv
