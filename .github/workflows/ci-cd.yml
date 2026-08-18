@@ -1,4 +1,4 @@
-name: CI/CD – prevision-api
+name: CI/CD - prevision-api
 
 on:
   push:
@@ -6,16 +6,21 @@ on:
 
   pull_request:
     branches: [main]
-    
+
   workflow_dispatch:
+
+concurrency:
+  group: prevision-api-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     name: Lint & Testes
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout do repositório
+      - name: Checkout do repositorio
         uses: actions/checkout@v4
 
       - name: Configurar Python 3.11
@@ -23,37 +28,63 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Instalar dependências
+      - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          pip install \
-            fastapi \
-            "uvicorn[standard]" \
-            joblib \
-            pandas \
-            scikit-learn \
-            imbalanced-learn \
-            openmeteo-requests \
-            requests-cache \
-            httpx \
-            pytest
+
+          if [ -f requirements.txt ]; then
+            REQ_FILE="requirements.txt"
+          else
+            echo "requirements.txt nao encontrado. Gerando requirements.ci.txt com pipreqs."
+            pip install pipreqs
+            pipreqs . --force --savepath requirements.ci.txt || true
+
+            if [ -f requirements.ci.txt ]; then
+              REQ_FILE="requirements.ci.txt"
+            else
+              REQ_FILE=""
+            fi
+          fi
+
+          if [ -n "${REQ_FILE}" ]; then
+            pip install -r "${REQ_FILE}"
+          else
+            echo "Falha ao gerar requirements. Usando fallback de dependencias."
+            pip install \
+              fastapi \
+              "uvicorn[standard]" \
+              joblib \
+              pandas \
+              scikit-learn \
+              imbalanced-learn \
+              openmeteo-requests \
+              requests-cache \
+              httpx
+          fi
+
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          else
+            pip install pytest
+          fi
 
       - name: Executar testes
         run: |
           if [ -d tests ]; then
             pytest tests/ --tb=short -v
           else
-            echo "Nenhum diretório 'tests' encontrado – pulando etapa de testes."
+            echo "Nenhum diretorio 'tests' encontrado - pulando etapa de testes."
           fi
 
   deploy:
     name: Deploy para EC2
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout do repositório
+      - name: Checkout do repositorio
         uses: actions/checkout@v4
 
       - name: Copiar arquivos para a EC2
@@ -65,21 +96,21 @@ jobs:
           source: "main.py,app.py,modelo.pkl,data/,service/,repository/"
           target: /opt/prevision-api
 
-      - name: Criar ambiente, instalar dependências e reiniciar
+      - name: Criar ambiente, instalar dependencias e reiniciar
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_API_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            set -e
+            set -euxo pipefail
 
             cd /opt/prevision-api
 
             # Garante permissao de escrita para o usuario ubuntu no diretorio da app
             sudo chown -R ubuntu:ubuntu /opt/prevision-api
-            
-            # Cria a virtualenv caso não exista
+
+            # Cria a virtualenv caso nao exista
             if [ ! -d ".venv" ]; then
               python3 -m venv .venv
             fi
@@ -88,14 +119,33 @@ jobs:
 
             python -m pip install --upgrade pip
 
-            pip install \
-              fastapi \
-              "uvicorn[standard]" \
-              joblib \
-              pandas \
-              scikit-learn \
-              imbalanced-learn
+            if [ -f requirements.txt ]; then
+              pip install -r requirements.txt
+            else
+              echo "requirements.txt nao encontrado. Gerando requirements.ci.txt com pipreqs."
+              pip install pipreqs
+              pipreqs /opt/prevision-api --force --savepath /opt/prevision-api/requirements.ci.txt || true
+
+              if [ -f /opt/prevision-api/requirements.ci.txt ]; then
+                pip install -r /opt/prevision-api/requirements.ci.txt
+              else
+                echo "Falha ao gerar requirements. Usando fallback de dependencias."
+                pip install \
+                  fastapi \
+                  "uvicorn[standard]" \
+                  joblib \
+                  pandas \
+                  scikit-learn \
+                  imbalanced-learn \
+                  openmeteo-requests \
+                  requests-cache \
+                  httpx
+              fi
+            fi
 
             sudo systemctl restart prevision-api
+
+            # Falha o job se o servico nao subir corretamente
+            sudo systemctl is-active --quiet prevision-api
 
             sudo systemctl status prevision-api --no-pager
