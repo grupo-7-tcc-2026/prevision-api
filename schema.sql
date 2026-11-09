@@ -1,0 +1,29 @@
+CREATE TABLE IF NOT EXISTS app_users (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    email VARCHAR(254) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_app_users_email (email)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS app_sessions (
+    token_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    expires_at DATETIME NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE CASCADE
+) CHARACTER SET utf8mb4;
+
+CREATE TABLE IF NOT EXISTS app_reports (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    region VARCHAR(20) NOT NULL,
+    address VARCHAR(255) NOT NULL,
+    probability DECIMAL(5,4) NOT NULL,
+    is_demo BOOLEAN NOT NULL DEFAULT TRUE,
+    image_type VARCHAR(32) NOT NULL,
+    image_data MEDIUMBLOB NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_app_reports_user_created (user_id, created_at),
+    FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE CASCADE
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

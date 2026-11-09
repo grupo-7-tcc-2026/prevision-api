@@ -18,6 +18,26 @@ jobs:
     name: Lint & Testes
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-test-only
+          MYSQL_DATABASE: prevision_app
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-test-only"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: prevision_app
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ci-test-only
+      TEST_MYSQL: "1"
 
     steps:
       - name: Checkout do repositorio
@@ -62,6 +82,7 @@ jobs:
               httpx
           fi
 
+          pip install -r requirements-auth.txt
           if [ -f requirements-dev.txt ]; then
             pip install -r requirements-dev.txt
           else
@@ -70,8 +91,9 @@ jobs:
 
       - name: Executar testes
         run: |
+          python -c "from pathlib import Path; import mysql.connector, os; c=mysql.connector.connect(host=os.environ['MYSQL_HOST'], port=int(os.environ['MYSQL_PORT']), database=os.environ['MYSQL_DATABASE'], user=os.environ['MYSQL_USER'], password=os.environ['MYSQL_PASSWORD']); cur=c.cursor(); [cur.execute(s) for s in Path('schema.sql').read_text(encoding='utf-8').split(';') if s.strip()]; c.commit(); cur.close(); c.close()"
           if [ -d tests ]; then
-            pytest tests/ --tb=short -v
+            python -m pytest tests/ --tb=short -v
           else
             echo "Nenhum diretorio 'tests' encontrado - pulando etapa de testes."
           fi
@@ -81,7 +103,7 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout do repositorio
@@ -93,7 +115,7 @@ jobs:
           host: ${{ secrets.EC2_API_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "main.py,app.py,modelo.pkl,data/,service/,repository/"
+          source: "main.py,app.py,accounts.py,requirements.txt,requirements-auth.txt,schema.sql,modelo.pkl,data/,service/,repository/"
           target: /opt/prevision-api
 
       - name: Criar ambiente, instalar dependencias e reiniciar
@@ -143,9 +165,18 @@ jobs:
               fi
             fi
 
+            pip install -r requirements-auth.txt
+
             sudo systemctl restart prevision-api
 
             # Falha o job se o servico nao subir corretamente
             sudo systemctl is-active --quiet prevision-api
+            for attempt in $(seq 1 30); do
+              if curl --fail --silent --show-error http://127.0.0.1:8000/health/ready; then
+                exit 0
+              fi
+              sleep 2
+            done
 
             sudo systemctl status prevision-api --no-pager
+            exit 1

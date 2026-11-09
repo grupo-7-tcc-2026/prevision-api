@@ -2,19 +2,37 @@ from fastapi import FastAPI
 import joblib
 import pandas as pd
 import sys
+import os
 from datetime import date, timedelta, datetime
 from service.meteo_service import MeteoService
 from fastapi.middleware.cors import CORSMiddleware
+from accounts import database, router as accounts_router
 
 app = FastAPI()
+app.include_router(accounts_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200", "http://18.204.106.135:4200"], # Ou ["*"] para liberar geral
+    allow_origins=[origin.strip() for origin in os.environ.get(
+        "CORS_ORIGINS", "http://localhost:4200,http://18.204.106.135:4200"
+    ).split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/health/ready")
+def ready():
+    with database() as connection:
+        cursor = connection.cursor()
+        try:
+            for table in ("app_users", "app_sessions", "app_reports"):
+                cursor.execute(f"SELECT 1 FROM {table} LIMIT 1")
+                cursor.fetchall()
+        finally:
+            cursor.close()
+    return {"status": "ok"}
+
 try:
     modelo = joblib.load('modelo.pkl')
     print("Modelo carregado com sucesso!")
