@@ -14,7 +14,7 @@ app.include_router(accounts_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in os.environ.get(
-        "CORS_ORIGINS", "http://localhost:4200,http://18.204.106.135:4200"
+        "CORS_ORIGINS", "http://localhost:4200,http://54.197.82.240:4200"
     ).split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
